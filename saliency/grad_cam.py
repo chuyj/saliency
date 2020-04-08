@@ -18,9 +18,10 @@ import tensorflow as tf
 
 from .base import SaliencyMask
 
+
 class GradCam(SaliencyMask):
     """A SaliencyMask class that computes saliency masks with Grad-CAM.
-  
+
     https://arxiv.org/abs/1610.02391
 
     Example usage (based on Examples.ipynb):
@@ -34,15 +35,16 @@ class GradCam(SaliencyMask):
     be 'Mixed_5c' in inception_v2 and 'Mixed_7c' in inception_v3.
 
     """
+
     def __init__(self, graph, session, y, x, conv_layer):
         super(GradCam, self).__init__(graph, session, y, x)
         self.conv_layer = conv_layer
         self.gradients_node = tf.gradients(y, conv_layer)[0]
 
-    def GetMask(self, x_value, feed_dict={}, should_resize = True, three_dims = True):
+    def GetMask(self, x_value, feed_dict={}, should_resize=True, three_dims=True):
         """
         Returns a Grad-CAM mask.
-        
+
         Modified from https://github.com/Ankush96/grad-cam.tensorflow/blob/master/main.py#L29-L62
 
         Args:
@@ -52,15 +54,15 @@ class GradCam(SaliencyMask):
               upsampled to match the size of the input image
           three_dims: boolean that determines whether the grayscale mask should be converted
               into a 3D mask by copying the 2D mask value's into each color channel
-            
+
         """
         feed_dict[self.x] = [x_value]
-        (output, grad) = self.session.run([self.conv_layer, self.gradients_node], 
-                                               feed_dict=feed_dict)
+        (output, grad) = self.session.run([self.conv_layer, self.gradients_node],
+                                          feed_dict=feed_dict)
         output = output[0]
         grad = grad[0]
 
-        weights = np.mean(grad, axis=(0,1))
+        weights = np.mean(grad, axis=(0, 1))
         grad_cam = np.zeros(output.shape[0:2], dtype=np.float32)
 
         # weighted average
@@ -72,15 +74,20 @@ class GradCam(SaliencyMask):
 
         # resize heatmap to be the same size as the input
         if should_resize:
-            grad_cam = grad_cam / np.max(grad_cam) # values need to be [0,1] to be resized
+            grad_cam = grad_cam / np.max(grad_cam)  # values need to be [0,1] to be resized
             with self.graph.as_default():
-                grad_cam = np.squeeze(tf.image.resize_bilinear(
-                    np.expand_dims(np.expand_dims(grad_cam, 0), 3), 
-                    x_value.shape[:2]).eval(session=self.session))
+                # grad_cam = np.squeeze(tf.image.resize_bilinear(
+                #     np.expand_dims(np.expand_dims(grad_cam, 0), 3),
+                #     x_value.shape[:2]).eval(session=self.session))
+                import cv2
+                shape = x_value.shape[:2]
+                # numpy dim is (width, height)
+                shape = (shape[1], shape[0])
+                grad_cam = cv2.resize(grad_cam, shape, interpolation=cv2.INTER_LINEAR)
 
-        # convert grayscale to 3-D
+                # convert grayscale to 3-D
         if three_dims:
             grad_cam = np.expand_dims(grad_cam, axis=2)
-            grad_cam = np.tile(grad_cam,[1,1,3])
+            grad_cam = np.tile(grad_cam, [1, 1, 3])
 
         return grad_cam
